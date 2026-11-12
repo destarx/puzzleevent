@@ -14,6 +14,7 @@
   --f-body:"Plus Jakarta Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
   color-scheme:dark;
 }
+*,*::before,*::after{box-sizing:border-box}
 html,body{height:100%}
 body{background:var(--night);color:var(--ink);font-family:var(--f-body);font-size:15px;overflow:hidden}
 button,input,select{font:inherit;color:inherit}
@@ -54,6 +55,21 @@ form{display:grid;gap:16px}
 input[type=range]{accent-color:var(--gold);flex:1;min-width:120px}
 .go{background:linear-gradient(180deg,#f3cf6e,#d9a43a);color:#1a1405;border:0;border-radius:12px;padding:14px 18px;font-weight:800;font-size:16px;letter-spacing:.04em;cursor:pointer;box-shadow:0 8px 24px -8px #e6b84f88}
 .go:hover{filter:brightness(1.06)}
+.gal{display:grid;gap:10px;border-top:1px solid var(--line);padding-top:14px}
+.galhead{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.linkbtn{background:none;border:0;color:var(--gold);cursor:pointer;font-size:13px;font-weight:600;padding:4px}
+.galgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:8px}
+.galgrid:empty{display:none}
+.thumb{position:relative;border:2px solid transparent;border-radius:8px;overflow:hidden;cursor:pointer;background:#000;padding:0;aspect-ratio:16/10;max-width:100%}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.thumb:hover{border-color:var(--line)}
+.thumb.sel{border-color:var(--gold)}
+.thumb .cap{position:absolute;left:0;right:0;bottom:0;font-size:11px;padding:3px 6px;background:linear-gradient(transparent,#000c);text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.thumb .del{position:absolute;top:4px;right:4px;background:#b3261e;color:#fff;border:0;border-radius:6px;font-size:11px;font-weight:700;padding:3px 7px;cursor:pointer}
+.savebox{display:grid;gap:8px;background:var(--night-2);border:1px solid var(--gold);border-radius:10px;padding:12px;font-size:13px}
+.savebox input,#pinBox input{background:var(--night);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:9em}
+.smallbtn{background:var(--gold);color:#1a1405;border:0;border-radius:8px;padding:8px 12px;font-weight:700;cursor:pointer}
+.smallbtn:disabled{opacity:.6;cursor:wait}
 .tips{font-size:13px;color:var(--muted);display:grid;gap:4px;margin:0;padding-left:18px}
 
 /* ---------- STAGE ---------- */
@@ -112,6 +128,17 @@ input[type=range]{accent-color:var(--gold);flex:1;min-width:120px}
         <span class="lbl">Pratonton potongan</span>
         <canvas id="pv" width="960" height="600" aria-label="Pratonton gambar dengan garis potongan puzzle"></canvas>
         <p class="hint" id="pvHint">Contoh gambar dipaparkan. Muat naik poster atau banner majlis anda untuk menggantikannya.</p>
+        <div id="saveBox" class="savebox" hidden>
+          <span>Simpan gambar ini ke galeri supaya boleh dipilih semula di mana-mana peranti.</span>
+          <div class="row"><input type="password" id="pinSave" inputmode="numeric" placeholder="PIN guru" autocomplete="off" aria-label="PIN guru"><button type="button" id="saveGal" class="smallbtn">Simpan ke galeri</button></div>
+          <span class="hint" id="saveMsg"></span>
+        </div>
+        <div class="gal">
+          <div class="galhead"><span class="lbl">Galeri gambar</span><button type="button" id="galManage" class="linkbtn">Urus galeri</button></div>
+          <div id="pinBox" class="row" hidden><input type="password" id="pinManage" inputmode="numeric" placeholder="PIN guru" autocomplete="off" aria-label="PIN guru untuk urus galeri"><button type="button" id="pinGo" class="smallbtn">Masuk</button></div>
+          <div id="galGrid" class="galgrid"></div>
+          <p class="hint" id="galMsg">Memuatkan galeri…</p>
+        </div>
       </div>
       <form class="card" id="cfg">
         <div class="field">
@@ -263,7 +290,8 @@ $('#shOn').onclick=()=>setShadow(true);$('#shOff').onclick=()=>setShadow(false);
 document.querySelectorAll('input[name=mode]').forEach(r=>r.onchange=()=>{S.mode=r.value;save()});
 function takeImageFile(f){
   if(!f||!f.type.startsWith('image/'))return;const rd=new FileReader();
-  rd.onload=()=>loadDataURL(rd.result,c=>{if(!c)return;src=c;srcIsSample=false;$('#imgName').textContent=f.name;$('#pvHint').textContent='Garis emas menunjukkan bentuk kepingan. Bentuk ditukar secara rawak setiap kali bermula.';drawPreview();
+  rd.onload=()=>loadDataURL(rd.result,c=>{if(!c)return;src=c;srcIsSample=false;$('#imgName').textContent=f.name;
+    pendingName=f.name.replace(/\.[^.]+$/,'');selId=null;markSel();$('#saveMsg').textContent='';$('#pinSave').hidden=!!getPin();$('#saveBox').hidden=false;$('#pvHint').textContent='Garis emas menunjukkan bentuk kepingan. Bentuk ditukar secara rawak setiap kali bermula.';drawPreview();
     try{localStorage.setItem('pp-img',c.toDataURL('image/jpeg',.85));localStorage.setItem('pp-imgname',f.name)}catch(e){}});
   rd.readAsDataURL(f);
 }
@@ -461,6 +489,66 @@ $('#cfg').addEventListener('submit',e=>{e.preventDefault();ensureAudio();$('#set
 addEventListener('keydown',e=>{if(stage.hidden||e.target.matches('input'))return;const k=e.key.toLowerCase();
   if(k==='f')full();else if(k==='h')stage.classList.toggle('hidebar');else if(k==='s'&&e.shiftKey)solve()});
 let rt;addEventListener('resize',()=>{if(stage.hidden||!G)return;clearTimeout(rt);rt=setTimeout(()=>{layout();G.pieces.forEach(p=>{if(!p.locked){clampPiece(p);place(p)}})},120)});
+
+/* ---------- shared gallery (Supabase) ---------- */
+const SB='https://tknyhzbfyvtcqsaqndlc.supabase.co',KEY='sb_publishable_cy07pwdJAPfK_HllG4O8ow_aQyXBn77';
+let pendingName='',selId=null,manage=false,gal=[];
+const getPin=()=>{try{return sessionStorage.getItem('pp-pin')||''}catch(e){return ''}};
+const setPin=p=>{try{p?sessionStorage.setItem('pp-pin',p):sessionStorage.removeItem('pp-pin')}catch(e){}};
+async function api(path,opt={}){
+  const r=await fetch(SB+'/rest/v1/'+path,{...opt,headers:{apikey:KEY,'Content-Type':'application/json',...(opt.headers||{})}});
+  const j=await r.json().catch(()=>null);if(!r.ok)throw new Error((j&&j.message)||('Ralat '+r.status));return j;
+}
+const rpc=(n,b)=>api('rpc/'+n,{method:'POST',body:JSON.stringify(b)});
+function markSel(){document.querySelectorAll('.thumb').forEach(t=>t.classList.toggle('sel',t.dataset.id===selId))}
+function renderGal(){
+  const g=$('#galGrid');g.innerHTML='';
+  gal.forEach(it=>{
+    const b=document.createElement('div');b.className='thumb';b.dataset.id=it.id;b.tabIndex=0;b.setAttribute('role','button');b.setAttribute('aria-label','Guna gambar '+it.name);
+    const im=document.createElement('img');im.src=it.thumb;im.alt='';const cap=document.createElement('span');cap.className='cap';cap.textContent=it.name;b.append(im,cap);
+    if(manage){const d=document.createElement('button');d.type='button';d.className='del';d.textContent='Padam';
+      d.onclick=async ev=>{ev.stopPropagation();if(d.dataset.arm!=='1'){d.dataset.arm='1';d.textContent='Pasti?';setTimeout(()=>{if(d.isConnected){d.dataset.arm='';d.textContent='Padam'}},3000);return}
+        d.disabled=true;try{const ok=await rpc('puzzle_delete_image',{p_pin:getPin(),p_id:it.id});if(ok===null){setPin('');manage=false;$('#galMsg').textContent='PIN tidak sah lagi. Masukkan semula.'}loadGal()}catch(e){$('#galMsg').textContent='Gagal padam: '+e.message;d.disabled=false}};
+      b.appendChild(d)}
+    const pick=()=>useGal(it);b.onclick=pick;b.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();pick()}};
+    g.appendChild(b);
+  });
+  markSel();
+  $('#galMsg').textContent=gal.length?(manage?'Mod urus: tekan Padam dua kali untuk membuang gambar.':'Pilih gambar untuk dijadikan puzzle. Muat naik gambar baharu untuk menambah ke galeri.'):'Galeri masih kosong. Muat naik gambar dan tekan "Simpan ke galeri".';
+  $('#galManage').textContent=manage?'Selesai urus':'Urus galeri';
+}
+async function loadGal(){
+  try{gal=await api('puzzle_images?select=id,name,thumb,created_at&order=created_at.desc&limit=200');renderGal()}
+  catch(e){$('#galMsg').textContent='Galeri tidak dapat dimuatkan. Semak sambungan internet. Gambar dari laptop masih boleh digunakan.'}
+}
+async function useGal(it){
+  $('#galMsg').textContent='Memuatkan "'+it.name+'"…';
+  try{const r=await api('puzzle_images?select=full_image&id=eq.'+it.id);if(!r||!r[0])throw new Error('Gambar tiada');
+    loadDataURL(r[0].full_image,c=>{if(!c)return;src=c;srcIsSample=false;selId=it.id;$('#imgName').textContent=it.name+' (galeri)';$('#saveBox').hidden=true;
+      $('#pvHint').textContent='Gambar dari galeri. Garis emas menunjukkan bentuk kepingan.';drawPreview();renderGal();
+      try{localStorage.setItem('pp-img',r[0].full_image);localStorage.setItem('pp-imgname',it.name+' (galeri)')}catch(e){}})}
+  catch(e){$('#galMsg').textContent='Gagal memuatkan gambar: '+e.message}
+}
+function scaled(max,q){const k=Math.min(1,max/Math.max(src.width,src.height)),c=document.createElement('canvas');c.width=Math.round(src.width*k);c.height=Math.round(src.height*k);
+  const x=c.getContext('2d');x.fillStyle='#000';x.fillRect(0,0,c.width,c.height);x.drawImage(src,0,0,c.width,c.height);return c.toDataURL('image/jpeg',q)}
+$('#saveGal').onclick=async()=>{
+  const btn=$('#saveGal'),msg=$('#saveMsg'),pin=getPin()||$('#pinSave').value.trim();
+  if(!pin){msg.textContent='Masukkan PIN guru dahulu.';$('#pinSave').hidden=false;$('#pinSave').focus();return}
+  btn.disabled=true;msg.textContent='Menyimpan…';
+  try{let full=scaled(1600,.82);if(full.length>1900000)full=scaled(1280,.72);
+    const id=await rpc('puzzle_add_image',{p_pin:pin,p_name:pendingName||'Gambar',p_thumb:scaled(320,.7),p_full:full});
+    if(id===null){setPin('');msg.textContent='PIN salah. Cuba lagi.';$('#pinSave').hidden=false;$('#pinSave').value='';$('#pinSave').focus()}
+    else{setPin(pin);selId=id;$('#saveBox').hidden=true;$('#imgName').textContent=(pendingName||'Gambar')+' (galeri)';await loadGal();$('#galMsg').textContent='Disimpan ke galeri. Gambar ini kini boleh dipilih di mana-mana peranti.'}}
+  catch(e){msg.textContent='Gagal simpan: '+e.message}
+  btn.disabled=false;
+};
+$('#galManage').onclick=()=>{if(manage){manage=false;renderGal();return}if(getPin()){manage=true;renderGal()}else{$('#pinBox').hidden=false;$('#pinManage').focus()}};
+$('#pinGo').onclick=async()=>{const p=$('#pinManage').value.trim();if(!p)return;
+  try{const ok=await rpc('puzzle_check_pin',{p_pin:p});if(ok){setPin(p);manage=true;$('#pinBox').hidden=true;$('#pinManage').value='';renderGal()}else $('#galMsg').textContent='PIN salah.'}
+  catch(e){$('#galMsg').textContent=e.message}};
+$('#pinManage').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();$('#pinGo').click()}};
+$('#pinSave').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();$('#saveGal').click()}};
+loadGal();
 
 /* init */
 src=sampleImage();
